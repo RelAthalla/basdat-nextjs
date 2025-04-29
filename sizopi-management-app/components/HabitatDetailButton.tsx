@@ -6,7 +6,7 @@ export default function HabitatDetailButton({ id }: { id: number }) {
   const router = useRouter();
 
   function handleDetail() {
-    router.push(`/habitat/${id}`);
+    router.push(`/manajemen/data-habitat/${id}`);
   }
 
   return (
