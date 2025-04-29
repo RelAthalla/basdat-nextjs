@@ -8,12 +8,12 @@ export default async function ProductsPage() {
 
   return (
     <div className="p-4">
-          <div className="flex justify-between items-center mb-4">
-              <h1 className="text-2xl font-bold text-center w-full">DAFTAR HABITAT</h1>
-              <div className="absolute right-4">
-              <AddSatwaForm />
-              </div>
+      <div className="flex justify-between items-center mb-4">
+          <h1 className="text-2xl font-bold text-center w-full">DAFTAR SATWA</h1>
+          <div className="absolute right-4">
+            <AddSatwaForm />
           </div>
+        </div>
       <div className="overflow-x-auto mt-6">
         <table className="table-auto w-full border-collapse border border-gray-300">
           <thead className="bg-gray-200">
