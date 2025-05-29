@@ -1,80 +1,103 @@
-import {NextResponse} from "next/server";
-import {query} from "@/lib/db";
+import { NextRequest, NextResponse } from 'next/server';
+import { query } from '@/lib/db';
 
 export async function GET() {
-	try {
-		const res = await query(`
-			SELECT id, id_hewan AS "idHewan", tanggal_pemeriksaan AS "tanggalPemeriksaan", 
-				   waktu_pemeriksaan AS "waktuPemeriksaan", jenis_pemeriksaan AS "jenisPemeriksaan", 
-				   nama_dokter AS "namaDokter", status_jadwal AS "statusJadwal"
-			FROM JADWAL_PEMERIKSAAN
-			ORDER BY tanggal_pemeriksaan ASC, waktu_pemeriksaan ASC
-		`);
-		return NextResponse.json(res.rows);
-	} catch (error) {
-		console.error("GET Error:", error);
-		return NextResponse.json({error: "Failed to fetch jadwal pemeriksaan"}, {status: 500});
-	}
+  try {
+    const res = await query(`
+      SELECT
+        j.id_hewan                       AS "idHewan",
+        to_char(j.tgl_pemeriksaan_selanjutnya,'YYYY-MM-DD')
+          AS "tglSelanjutnya",
+        j.freq_pemeriksaan_rutin        AS "freqRutin",
+        h.nama                          AS "namaHewan"
+      FROM jadwal_pemeriksaan_kesehatan j
+      JOIN hewan h   ON j.id_hewan = h.id
+      ORDER BY h.nama, j.tgl_pemeriksaan_selanjutnya
+    `, []);
+    return NextResponse.json(res.rows);
+  } catch (err) {
+    console.error('GET Error:', err);
+    return NextResponse.json({ error: 'Failed to fetch data' }, { status: 500 });
+  }
 }
 
-export async function POST(request: Request) {
-	try {
-		const {idHewan, tanggalPemeriksaan, waktuPemeriksaan, jenisPemeriksaan, namaDokter, statusJadwal} = await request.json();
 
-		await query(
-			`INSERT INTO JADWAL_PEMERIKSAAN (id_hewan, tanggal_pemeriksaan, waktu_pemeriksaan, jenis_pemeriksaan, nama_dokter, status_jadwal)
-			 VALUES ($1, $2, $3, $4, $5, $6)`,
-			[idHewan, tanggalPemeriksaan, waktuPemeriksaan, jenisPemeriksaan, namaDokter, statusJadwal]
-		);
-
-		return NextResponse.json({message: "Created"}, {status: 201});
-	} catch (error) {
-		console.error("POST Error:", error);
-		return NextResponse.json({error: "Failed to add jadwal pemeriksaan"}, {status: 500});
-	}
+export async function POST(request: NextRequest) {
+  try {
+    const { idHewan, tglSelanjutnya, freqRutin } = await request.json();
+    await query(
+      `INSERT INTO jadwal_pemeriksaan_kesehatan
+         (id_hewan, tgl_pemeriksaan_selanjutnya, freq_pemeriksaan_rutin)
+       VALUES ($1, $2, $3)`,
+      [idHewan, tglSelanjutnya, freqRutin]
+    );
+    return NextResponse.json({ message: 'Created' }, { status: 201 });
+  } catch (err) {
+    console.error('POST Error:', err);
+    return NextResponse.json({ error: 'Failed to create record' }, { status: 500 });
+  }
 }
 
-export async function PUT(request: Request) {
-	try {
-		const url = new URL(request.url);
-		const id = url.searchParams.get("id");
-		if (!id) return NextResponse.json({error: "Missing id"}, {status: 400});
+export async function PUT(request: NextRequest) {
+  try {
+    // 1) pull everything from the JSON body
+    const {
+      idHewan,
+      origTanggal,      // original date key
+      tglSelanjutnya,   // new date
+      freqRutin
+    } = await request.json();
 
-		const {idHewan, tanggalPemeriksaan, waktuPemeriksaan, jenisPemeriksaan, namaDokter, statusJadwal} = await request.json();
+    if (!idHewan || !origTanggal) {
+      return NextResponse.json(
+        { error: 'Missing idHewan or origTanggal in body' },
+        { status: 400 }
+      );
+    }
+	console.log(tglSelanjutnya, freqRutin, idHewan, origTanggal);		
+    // 2) do the update
+    const res = await query(
+      `UPDATE jadwal_pemeriksaan_kesehatan
+         SET tgl_pemeriksaan_selanjutnya = $1,
+             freq_pemeriksaan_rutin      = $2
+       WHERE id_hewan = $3
+         AND tgl_pemeriksaan_selanjutnya = $4`,
+      [ tglSelanjutnya, freqRutin, idHewan, origTanggal ]
+    );
 
-		const result = await query(
-			`UPDATE JADWAL_PEMERIKSAAN
-			 SET id_hewan=$1, tanggal_pemeriksaan=$2, waktu_pemeriksaan=$3, jenis_pemeriksaan=$4, nama_dokter=$5, status_jadwal=$6
-			 WHERE id=$7`,
-			[idHewan, tanggalPemeriksaan, waktuPemeriksaan, jenisPemeriksaan, namaDokter, statusJadwal, id]
-		);
-
-		if (result.rowCount === 0) {
-			return NextResponse.json({error: "Record not found"}, {status: 404});
-		}
-
-		return NextResponse.json({message: "Updated"}, {status: 200});
-	} catch (error) {
-		console.error("PUT Error:", error);
-		return NextResponse.json({error: "Failed to update jadwal pemeriksaan"}, {status: 500});
-	}
+    if (res.rowCount === 0) {
+      return NextResponse.json({ error: 'Record not found' }, { status: 404 });
+    }
+    return NextResponse.json({ message: 'Updated' });
+  } catch (err) {
+    console.error('PUT Error:', err);
+    return NextResponse.json({ error: 'Failed to update record' }, { status: 500 });
+  }
 }
 
-export async function DELETE(request: Request) {
-	try {
-		const url = new URL(request.url);
-		const id = url.searchParams.get("id");
-		if (!id) return NextResponse.json({error: "Missing id"}, {status: 400});
+export async function DELETE(request: NextRequest) {
+  try {
+    // also take keys from the body
+    const { idHewan, origTanggal } = await request.json();
+    if (!idHewan || !origTanggal) {
+      return NextResponse.json(
+        { error: 'Missing idHewan or origTanggal in body' },
+        { status: 400 }
+      );
+    }
 
-		const result = await query(`DELETE FROM JADWAL_PEMERIKSAAN WHERE id=$1`, [id]);
-
-		if (result.rowCount === 0) {
-			return NextResponse.json({error: "Record not found"}, {status: 404});
-		}
-
-		return NextResponse.json({message: "Deleted"}, {status: 200});
-	} catch (error) {
-		console.error("DELETE Error:", error);
-		return NextResponse.json({error: "Failed to delete jadwal pemeriksaan"}, {status: 500});
-	}
+    const res = await query(
+      `DELETE FROM jadwal_pemeriksaan_kesehatan
+       WHERE id_hewan = $1
+         AND tgl_pemeriksaan_selanjutnya = $2`,
+      [ idHewan, origTanggal ]
+    );
+    if (res.rowCount === 0) {
+      return NextResponse.json({ error: 'Record not found' }, { status: 404 });
+    }
+    return NextResponse.json({ message: 'Deleted' });
+  } catch (err) {
+    console.error('DELETE Error:', err);
+    return NextResponse.json({ error: 'Failed to delete record' }, { status: 500 });
+  }
 }
