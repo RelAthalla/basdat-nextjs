@@ -1,6 +1,5 @@
 export type Habitat = {
-  id: number;
-  namaHabitat: string;
+  nama: string;
   luasArea: number;
   kapasitas: number;
   status: string;
