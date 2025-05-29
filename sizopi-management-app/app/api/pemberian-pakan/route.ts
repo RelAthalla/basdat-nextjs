@@ -47,99 +47,109 @@ export async function POST(request: NextRequest) {
   }
 }
 
+function toPgTs(raw: string) {
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) throw new Error("Invalid timestamp");
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
+       + ` ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 export async function PUT(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const idHewan = searchParams.get('idHewan');
-    const jadwal = searchParams.get('jadwal');
-    
-    if (!idHewan || !jadwal) {
-      return NextResponse.json(
-        { error: 'idHewan and jadwal are required' },
-        { status: 400 }
-      );
+    const idHewan   = searchParams.get('idHewan');
+    const rawJadwal = searchParams.get('jadwal');  // could be full ISO
+
+    if (!idHewan || !rawJadwal) {
+      return NextResponse.json({ error: 'idHewan and jadwal are required' }, { status: 400 });
     }
-    
+
+    // normalize the original timestamp
+    let originalTs: string;
+    try { originalTs = toPgTs(rawJadwal); }
+    catch {
+      return NextResponse.json({ error: 'Invalid jadwal format' }, { status: 400 });
+    }
+
     const body = await request.json();
     const { jenisPakan, jumlahPakan, status, jadwal: newJadwal } = body;
-    
-    // Simple approach like hewan API - direct update using the URL parameters
-    const updateFields = [];
-    const values = [];
-    let paramCount = 1;
-    
+
+    const updateFields: string[] = [];
+    const values: any[] = [];
+    let idx = 1;
+
     if (jenisPakan !== undefined) {
-      updateFields.push(`jenis = $${paramCount++}`);
+      updateFields.push(`jenis = $${idx++}`);
       values.push(jenisPakan);
     }
     if (jumlahPakan !== undefined) {
-      updateFields.push(`jumlah = $${paramCount++}`);
+      updateFields.push(`jumlah = $${idx++}`);
       values.push(jumlahPakan);
     }
     if (status !== undefined) {
-      updateFields.push(`status = $${paramCount++}`);
+      updateFields.push(`status = $${idx++}`);
       values.push(status);
     }
     if (newJadwal !== undefined) {
-      updateFields.push(`jadwal = $${paramCount++}`);
-      values.push(newJadwal);
+      // normalize the new one too
+      let formattedNew: string;
+      try { formattedNew = toPgTs(newJadwal); }
+      catch {
+        return NextResponse.json({ error: 'Invalid new jadwal format' }, { status: 400 });
+      }
+      updateFields.push(`jadwal = $${idx++}`);
+      values.push(formattedNew);
     }
-    
-    values.push(idHewan, jadwal);
-    
-    const result = await query(
-      `UPDATE PAKAN SET ${updateFields.join(', ')} WHERE id_hewan = $${paramCount++} AND jadwal = $${paramCount}`,
-      values
-    );
-    
+
+    // append the WHERE params
+    values.push(idHewan, originalTs);
+
+    const sql = `
+      UPDATE PAKAN
+         SET ${updateFields.join(', ')}
+       WHERE id_hewan = $${idx++}
+         AND jadwal    = $${idx}
+    `;
+    const result = await query(sql, values);
+
     if (result.rowCount === 0) {
-      return NextResponse.json(
-        { error: 'Record not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Record not found' }, { status: 404 });
     }
-    
     return NextResponse.json({ message: 'Pemberian pakan updated successfully' });
-  } catch (error) {
-    console.error('Error updating pemberian pakan:', error);
-    return NextResponse.json(
-      { error: 'Failed to update pemberian pakan' },
-      { status: 500 }
-    );
+  } catch (err) {
+    console.error('Error updating pemberian pakan:', err);
+    return NextResponse.json({ error: 'Failed to update pemberian pakan' }, { status: 500 });
   }
 }
 
 export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const idHewan = searchParams.get('idHewan');
-    const jadwal = searchParams.get('jadwal');
-    
-    if (!idHewan || !jadwal) {
-      return NextResponse.json(
-        { error: 'idHewan and jadwal are required' },
-        { status: 400 }
-      );
+    const idHewan   = searchParams.get('idHewan');
+    const rawJadwal = searchParams.get('jadwal');
+
+    if (!idHewan || !rawJadwal) {
+      return NextResponse.json({ error: 'idHewan and jadwal are required' }, { status: 400 });
     }
-    
+
+    let ts: string;
+    try { ts = toPgTs(rawJadwal); }
+    catch {
+      return NextResponse.json({ error: 'Invalid jadwal format' }, { status: 400 });
+    }
+
     const result = await query(
       'DELETE FROM PAKAN WHERE id_hewan = $1 AND jadwal = $2',
-      [idHewan, jadwal]
+      [idHewan, ts]
     );
-    
+
     if (result.rowCount === 0) {
-      return NextResponse.json(
-        { error: 'Record not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Record not found' }, { status: 404 });
     }
-    
     return NextResponse.json({ message: 'Pemberian pakan deleted successfully' });
-  } catch (error) {
-    console.error('Error deleting pemberian pakan:', error);
-    return NextResponse.json(
-      { error: 'Failed to delete pemberian pakan' },
-      { status: 500 }
-    );
+  } catch (err) {
+    console.error('Error deleting pemberian pakan:', err);
+    return NextResponse.json({ error: 'Failed to delete pemberian pakan' }, { status: 500 });
   }
 }
