@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { getAllRekamMedis, addRekamMedis, updateRekamMedis, deleteRekamMedis } from '@/services/rekamMedisService';
 import '../globals.css';
 
 interface MedicalRecord {
   idHewan: string;
+  namaHewan?: string;
   usernameDh: string;
   tanggalPemeriksaan: string;
   diagnosis: string;
@@ -24,6 +24,12 @@ interface FormData {
   catatanTindakLanjut: string;
 }
 
+interface Animal {
+  id: string;
+  namaIndividu: string;
+  spesies: string;
+}
+
 export default function RekamMedis() {
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
   const [showEditModal, setShowEditModal] = useState<boolean>(false);
@@ -31,6 +37,8 @@ export default function RekamMedis() {
   const [selectedRecord, setSelectedRecord] = useState<MedicalRecord | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [animals, setAnimals] = useState<Animal[]>([]);
 
   const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>([]);
 
@@ -45,15 +53,38 @@ export default function RekamMedis() {
     catatanTindakLanjut: ''
   });
 
+  // helper: normalize any date input to PostgreSQL date format
+  const toPgDate = (input: string) => {
+    const d = new Date(input);
+    if (isNaN(d.getTime())) throw new Error("Invalid date");
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  };
+
   // Fetch medical records from API
   useEffect(() => {
+    // Get current user data
+    const userString = localStorage.getItem('user');
+    if (userString) {
+      const user = JSON.parse(userString);
+      setCurrentUser(user);
+      setFormData(prev => ({
+        ...prev,
+        usernameDh: user.username
+      }));
+    }
+
     fetchMedicalRecords();
+    fetchAnimals();
   }, []);
 
   const fetchMedicalRecords = async () => {
     try {
       setLoading(true);
-      const data = await getAllRekamMedis();
+      const response = await fetch('/api/rekam-medis');
+      if (!response.ok) throw new Error('Failed to fetch rekam medis');
+      
+      const data = await response.json();
       setMedicalRecords(data);
     } catch (err) {
       setError('Gagal memuat rekam medis');
@@ -63,22 +94,67 @@ export default function RekamMedis() {
     }
   };
 
+  const fetchAnimals = async () => {
+    try {
+      const response = await fetch('/api/hewan');
+      if (!response.ok) throw new Error('Failed to fetch animals');
+      
+      const data = await response.json();
+      setAnimals(data);
+    } catch (err) {
+      console.error('Error fetching animals:', err);
+    }
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData({
-      ...formData,
-      [name]: value
-    });
+    
+    // If status kesehatan changes to "Sehat", clear diagnosis, pengobatan, and catatan tindak lanjut
+    if (name === 'statusKesehatan' && value === 'Sehat') {
+      setFormData({
+        ...formData,
+        [name]: value,
+        diagnosis: '',
+        pengobatan: '',
+        catatanTindakLanjut: ''
+      });
+    } else {
+      setFormData({
+        ...formData,
+        [name]: value
+      });
+    }
   };
 
   const handleAddRecord = async () => {
     try {
-      await addRekamMedis(formData as any);
+      // normalize the date before sending
+      const payload = {
+        ...formData,
+        tanggalPemeriksaan: toPgDate(formData.tanggalPemeriksaan)
+      };
+
+      const response = await fetch('/api/rekam-medis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to add rekam medis');
+      }
+
+      // Clear any previous errors
+      setError('');
+      
       await fetchMedicalRecords();
       setShowAddModal(false);
+      
+      // Reset form but keep the doctor username
       setFormData({
         idHewan: '',
-        usernameDh: '',
+        usernameDh: currentUser?.username || '', // Keep the doctor username
         tanggalPemeriksaan: '',
         diagnosis: '',
         pengobatan: '',
@@ -95,26 +171,32 @@ export default function RekamMedis() {
     if (!selectedRecord) return;
     
     try {
-      await updateRekamMedis(
-        selectedRecord.idHewan,
-        selectedRecord.tanggalPemeriksaan,
-        {
+      // normalize the date parameter for URL
+      const normalizedDate = toPgDate(selectedRecord.tanggalPemeriksaan);
+
+      const response = await fetch(`/api/rekam-medis?idHewan=${selectedRecord.idHewan}&tanggalPemeriksaan=${encodeURIComponent(normalizedDate)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           diagnosis: formData.diagnosis,
           pengobatan: formData.pengobatan,
           catatanTindakLanjut: formData.catatanTindakLanjut
-        }
-      );
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update rekam medis');
+      }
       
       await fetchMedicalRecords();
       setShowEditModal(false);
       setSelectedRecord(null);
       setError('');
-      alert('Rekam medis berhasil diupdate!');
     } catch (err) {
-      console.error("Edit error:", err);
-      if (err instanceof Error) {
-        setError(`Gagal mengupdate rekam medis: ${err.message}`);
-      }
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setError(`Gagal mengupdate rekam medis: ${errorMessage}`);
+      console.error(err);
     }
   };
 
@@ -122,17 +204,26 @@ export default function RekamMedis() {
     if (!selectedRecord) return;
     
     try {
-      await deleteRekamMedis(selectedRecord.idHewan, selectedRecord.tanggalPemeriksaan);
+      // normalize the date parameter for URL
+      const normalizedDate = toPgDate(selectedRecord.tanggalPemeriksaan);
+
+      const response = await fetch(`/api/rekam-medis?idHewan=${selectedRecord.idHewan}&tanggalPemeriksaan=${encodeURIComponent(normalizedDate)}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete rekam medis');
+      }
+      
       await fetchMedicalRecords();
       setShowDeleteModal(false);
       setSelectedRecord(null);
       setError('');
-      alert('Rekam medis berhasil dihapus!');
     } catch (err) {
-      console.error("Delete error:", err);
-      if (err instanceof Error) {
-        setError(`Gagal menghapus rekam medis: ${err.message}`);
-      }
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setError(`Gagal menghapus rekam medis: ${errorMessage}`);
+      console.error(err);
     }
   };
 
@@ -185,7 +276,7 @@ export default function RekamMedis() {
         <table className="min-w-full bg-white divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID Hewan</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama Hewan</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Username Dokter</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tanggal Pemeriksaan</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status Kesehatan</th>
@@ -198,7 +289,7 @@ export default function RekamMedis() {
           <tbody className="divide-y divide-gray-200">
             {medicalRecords.map((record, index) => (
               <tr key={`${record.idHewan}-${record.tanggalPemeriksaan}-${index}`}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{record.idHewan}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{record.namaHewan || 'Nama tidak tersedia'}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{record.usernameDh}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{record.tanggalPemeriksaan}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -235,99 +326,131 @@ export default function RekamMedis() {
 
       {/* Add Record Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-          <div className="bg-white rounded-lg w-full max-w-md mx-4 p-6">
-            <h2 className="text-xl font-bold mb-4">FORM PENCATATAN REKAM MEDIS</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">ID Hewan</label>
-                <input
-                  type="text"
-                  name="idHewan"
-                  value={formData.idHewan}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  required
-                />
+        <div className="fixed inset-0 bg-black bg-opacity-60 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg w-full max-w-lg mx-4 shadow-2xl">
+            <div className="p-8">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6 text-center border-b pb-4">FORM PENCATATAN REKAM MEDIS</h2>
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-800 mb-2">Pilih Hewan</label>
+                  <select
+                    name="idHewan"
+                    value={formData.idHewan}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900"
+                    required
+                  >
+                    <option value="">Pilih Hewan</option>
+                    {animals.map((animal) => (
+                      <option key={animal.id} value={animal.id}>
+                        {animal.namaIndividu} - {animal.spesies} (ID: {animal.id})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-semibold text-gray-800 mb-2">Dokter Pemeriksa</label>
+                  <input
+                    type="text"
+                    value={currentUser?.username || ''}
+                    disabled
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg shadow-sm bg-gray-100 text-gray-600 cursor-not-allowed"
+                    placeholder="Username dokter"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Username dokter yang sedang login</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-800 mb-2">Tanggal Pemeriksaan</label>
+                  <input
+                    type="date"
+                    name="tanggalPemeriksaan"
+                    value={formData.tanggalPemeriksaan}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-800 mb-2">Status Kesehatan</label>
+                  <select
+                    name="statusKesehatan"
+                    value={formData.statusKesehatan}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900"
+                  >
+                    <option value="Sehat">Sehat</option>
+                    <option value="Sakit">Sakit</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-800 mb-2">Diagnosis</label>
+                  <input
+                    type="text"
+                    name="diagnosis"
+                    value={formData.diagnosis}
+                    onChange={handleInputChange}
+                    disabled={formData.statusKesehatan === 'Sehat'}
+                    className={`w-full px-4 py-3 border-2 rounded-lg shadow-sm focus:outline-none ${
+                      formData.statusKesehatan === 'Sehat'
+                        ? 'border-gray-200 bg-gray-100 cursor-not-allowed text-gray-500'
+                        : 'border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900'
+                    }`}
+                    placeholder={formData.statusKesehatan === 'Sehat' ? 'Tidak diperlukan untuk status sehat' : 'Masukkan diagnosis'}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-800 mb-2">Pengobatan</label>
+                  <input
+                    type="text"
+                    name="pengobatan"
+                    value={formData.pengobatan}
+                    onChange={handleInputChange}
+                    disabled={formData.statusKesehatan === 'Sehat'}
+                    className={`w-full px-4 py-3 border-2 rounded-lg shadow-sm focus:outline-none ${
+                      formData.statusKesehatan === 'Sehat'
+                        ? 'border-gray-200 bg-gray-100 cursor-not-allowed text-gray-500'
+                        : 'border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900'
+                    }`}
+                    placeholder={formData.statusKesehatan === 'Sehat' ? 'Tidak diperlukan untuk status sehat' : 'Masukkan pengobatan'}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-800 mb-2">Catatan Tindak Lanjut</label>
+                  <input
+                    type="text"
+                    name="catatanTindakLanjut"
+                    value={formData.catatanTindakLanjut}
+                    onChange={handleInputChange}
+                    disabled={formData.statusKesehatan === 'Sehat'}
+                    className={`w-full px-4 py-3 border-2 rounded-lg shadow-sm focus:outline-none ${
+                      formData.statusKesehatan === 'Sehat'
+                        ? 'border-gray-200 bg-gray-100 cursor-not-allowed text-gray-500'
+                        : 'border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900'
+                    }`}
+                    placeholder={formData.statusKesehatan === 'Sehat' ? 'Tidak diperlukan untuk status sehat' : 'Masukkan catatan tindak lanjut'}
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Username Dokter</label>
-                <input
-                  type="text"
-                  name="usernameDh"
-                  value={formData.usernameDh}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Tanggal Pemeriksaan</label>
-                <input
-                  type="date"
-                  name="tanggalPemeriksaan"
-                  value={formData.tanggalPemeriksaan}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Status Kesehatan</label>
-                <select
-                  name="statusKesehatan"
-                  value={formData.statusKesehatan}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              <div className="mt-8 flex justify-end space-x-4 pt-4 border-t">
+                <button
+                  onClick={() => setShowAddModal(false)}
+                  className="px-6 py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors"
                 >
-                  <option value="Sehat">Sehat</option>
-                  <option value="Sakit">Sakit</option>
-                </select>
+                  BATAL
+                </button>
+                <button
+                  onClick={handleAddRecord}
+                  className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors"
+                >
+                  SIMPAN
+                </button>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Diagnosis</label>
-                <input
-                  type="text"
-                  name="diagnosis"
-                  value={formData.diagnosis}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Pengobatan</label>
-                <input
-                  type="text"
-                  name="pengobatan"
-                  value={formData.pengobatan}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Catatan Tindak Lanjut</label>
-                <input
-                  type="text"
-                  name="catatanTindakLanjut"
-                  value={formData.catatanTindakLanjut}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-            </div>
-            <div className="mt-5 flex justify-end space-x-3">
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="bg-gray-300 hover:bg-gray-400 px-4 py-2 rounded-md text-sm font-medium"
-              >
-                BATAL
-              </button>
-              <button
-                onClick={handleAddRecord}
-                className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium"
-              >
-                SIMPAN
-              </button>
             </div>
           </div>
         </div>
@@ -335,55 +458,59 @@ export default function RekamMedis() {
 
       {/* Edit Record Modal */}
       {showEditModal && selectedRecord && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-          <div className="bg-white rounded-lg w-full max-w-md mx-4 p-6">
-            <h2 className="text-xl font-bold mb-4">EDIT REKAM MEDIS</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Diagnosis Baru</label>
-                <input
-                  type="text"
-                  name="diagnosis"
-                  value={formData.diagnosis}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
+        <div className="fixed inset-0 bg-black bg-opacity-60 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg w-full max-w-lg mx-4 shadow-2xl">
+            <div className="p-8">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6 text-center border-b pb-4">EDIT REKAM MEDIS</h2>
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-800 mb-2">Diagnosis Baru</label>
+                  <input
+                    type="text"
+                    name="diagnosis"
+                    value={formData.diagnosis}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 placeholder-gray-500"
+                    placeholder="Masukkan diagnosis baru"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-800 mb-2">Pengobatan Baru</label>
+                  <input
+                    type="text"
+                    name="pengobatan"
+                    value={formData.pengobatan}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 placeholder-gray-500"
+                    placeholder="Masukkan pengobatan baru"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-800 mb-2">Catatan Tindak Lanjut</label>
+                  <input
+                    type="text"
+                    name="catatanTindakLanjut"
+                    value={formData.catatanTindakLanjut}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 placeholder-gray-500"
+                    placeholder="Catatan tindak lanjut (opsional)"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Pengobatan Baru</label>
-                <input
-                  type="text"
-                  name="pengobatan"
-                  value={formData.pengobatan}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
+              <div className="mt-8 flex justify-end space-x-4 pt-4 border-t">
+                <button
+                  onClick={() => setShowEditModal(false)}
+                  className="px-6 py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors"
+                >
+                  BATAL
+                </button>
+                <button
+                  onClick={handleEditRecord}
+                  className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors"
+                >
+                  SIMPAN
+                </button>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Catatan Tindak Lanjut</label>
-                <input
-                  type="text"
-                  name="catatanTindakLanjut"
-                  value={formData.catatanTindakLanjut}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Catatan tindak lanjut (opsional)"
-                />
-              </div>
-            </div>
-            <div className="mt-5 flex justify-end space-x-3">
-              <button
-                onClick={() => setShowEditModal(false)}
-                className="bg-gray-300 hover:bg-gray-400 px-4 py-2 rounded-md text-sm font-medium"
-              >
-                BATAL
-              </button>
-              <button
-                onClick={handleEditRecord}
-                className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium"
-              >
-                SIMPAN
-              </button>
             </div>
           </div>
         </div>
@@ -391,23 +518,25 @@ export default function RekamMedis() {
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && selectedRecord && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-          <div className="bg-white rounded-lg w-full max-w-md mx-4 p-6">
-            <h2 className="text-xl font-bold mb-4">HAPUS REKAM MEDIS</h2>
-            <p className="mb-4">Apakah anda yakin ingin menghapus rekam medis ini?</p>
-            <div className="flex justify-end space-x-3">
-              <button
-                onClick={() => setShowDeleteModal(false)}
-                className="bg-gray-300 hover:bg-gray-400 px-4 py-2 rounded-md text-sm font-medium"
-              >
-                TIDAK
-              </button>
-              <button
-                onClick={handleDeleteRecord}
-                className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md text-sm font-medium"
-              >
-                YA
-              </button>
+        <div className="fixed inset-0 bg-black bg-opacity-60 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg w-full max-w-md mx-4 shadow-2xl">
+            <div className="p-8">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6 text-center border-b pb-4">HAPUS REKAM MEDIS</h2>
+              <p className="mb-6 text-gray-700 text-center">Apakah anda yakin ingin menghapus rekam medis ini?</p>
+              <div className="flex justify-end space-x-4">
+                <button
+                  onClick={() => setShowDeleteModal(false)}
+                  className="px-6 py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors"
+                >
+                  TIDAK
+                </button>
+                <button
+                  onClick={handleDeleteRecord}
+                  className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-colors"
+                >
+                  YA
+                </button>
+              </div>
             </div>
           </div>
         </div>

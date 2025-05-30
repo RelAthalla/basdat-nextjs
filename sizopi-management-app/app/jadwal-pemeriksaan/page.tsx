@@ -181,34 +181,34 @@ const remove = async () => {
 
         {error && <div className="mb-2 text-red-600">{error}</div>}
 
-        <table className="w-full table-auto border-collapse">
+        <table className="w-full table-auto border-collapse border border-gray-300">
           <thead>
-            <tr className="bg-gray-100">
-              <th className="border px-2 py-1">Tanggal</th>
-              <th className="border px-2 py-1">Frekuensi (bln)</th>
-              <th className="border px-2 py-1">Aksi</th>
+            <tr className="bg-gray-50">
+              <th className="border border-gray-300 px-4 py-3 text-left text-sm font-semibold text-gray-900">Tanggal</th>
+              <th className="border border-gray-300 px-4 py-3 text-left text-sm font-semibold text-gray-900">Frekuensi (bln)</th>
+              <th className="border border-gray-300 px-4 py-3 text-left text-sm font-semibold text-gray-900">Aksi</th>
             </tr>
           </thead>
           <tbody>
             {shown.map(r => (
-              <tr key={r.idHewan + r.tglSelanjutnya}>
-                <td className="border px-2 py-1">{r.tglSelanjutnya}</td>
-                <td className="border px-2 py-1">{r.freqRutin}</td>
-                <td className="border px-2 py-1 space-x-2">
+              <tr key={r.idHewan + r.tglSelanjutnya} className="bg-white">
+                <td className="border border-gray-300 px-4 py-2 text-gray-900">{r.tglSelanjutnya}</td>
+                <td className="border border-gray-300 px-4 py-2 text-gray-900">{r.freqRutin}</td>
+                <td className="border border-gray-300 px-4 py-2 space-x-2">
                   <button
                     onClick={()=>openEdit(r)}
-                    className="text-blue-600 hover:underline"
+                    className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
                   >Edit</button>
                   <button
                     onClick={()=>openDelete(r)}
-                    className="text-red-600 hover:underline"
+                    className="text-red-600 hover:text-red-800 hover:underline font-medium"
                   >Hapus</button>
                 </td>
               </tr>
             ))}
             {shown.length===0 && (
-              <tr>
-                <td colSpan={3} className="text-center py-4 text-gray-500">
+              <tr className="bg-white">
+                <td colSpan={3} className="text-center py-4 text-gray-500 border border-gray-300">
                   Belum ada jadwal.
                 </td>
               </tr>
@@ -220,15 +220,15 @@ const remove = async () => {
       {/* MODALS */}
       {modal === 'add' && (
         <Modal title="Tambah Jadwal" onClose={()=>setModal(null)}>
-          <div className="space-y-3">
+          <div className="space-y-4">
             {/* Animal select */}
             <div>
-              <label className="block mb-1">Hewan</label>
+              <label className="block mb-2 text-sm font-semibold text-gray-800">Hewan</label>
               <select
                 name="idHewan"
                 value={form.idHewan}
                 onChange={e=>setForm(f=>({...f,idHewan:e.target.value}))}
-                className="w-full border px-2 py-1 rounded"
+                className="w-full border-2 border-gray-300 px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900"
               >
                 <option value="">— Pilih Hewan —</option>
                 {data
@@ -240,34 +240,35 @@ const remove = async () => {
               </select>
             </div>
             <div>
-              <label className="block mb-1">Tanggal</label>
+              <label className="block mb-2 text-sm font-semibold text-gray-800">Tanggal</label>
               <input
                 type="date"
                 name="tglSelanjutnya"
                 value={form.tglSelanjutnya}
                 onChange={handleChange}
-                className="w-full border px-2 py-1 rounded"
+                className="w-full border-2 border-gray-300 px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900"
               />
             </div>
             <div>
-              <label className="block mb-1">Frekuensi (bln)</label>
+              <label className="block mb-2 text-sm font-semibold text-gray-800">Frekuensi (bln)</label>
               <input
                 type="number"
                 name="freqRutin"
                 value={form.freqRutin}
                 onChange={handleChange}
-                className="w-full border px-2 py-1 rounded"
+                className="w-full border-2 border-gray-300 px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900"
                 min={1}
+                placeholder="Masukkan frekuensi dalam bulan"
               />
             </div>
-            <div className="text-right">
+            <div className="text-right pt-4 border-t">
               <button
                 onClick={()=>setModal(null)}
-                className="mr-2 px-3 py-1 bg-gray-300 rounded"
+                className="mr-3 px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
               >Batal</button>
               <button
                 onClick={create}
-                className="px-3 py-1 bg-green-500 text-white rounded"
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors"
               >Simpan</button>
             </div>
           </div>
@@ -276,32 +277,32 @@ const remove = async () => {
 
       {modal === 'edit' && editing && (
         <Modal title="Edit Jadwal" onClose={()=>setModal(null)}>
-          {/* same fields but no hewan select */}
-          <div className="space-y-3">
+          <div className="space-y-4">
             <div>
-              <label className="block mb-1">Tanggal</label>
+              <label className="block mb-2 text-sm font-semibold text-gray-800">Tanggal</label>
               <input
                 type="date"
                 name="tglSelanjutnya"
                 value={form.tglSelanjutnya}
                 onChange={handleChange}
-                className="w-full border px-2 py-1 rounded"
+                className="w-full border-2 border-gray-300 px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900"
               />
             </div>
             <div>
-              <label className="block mb-1">Frekuensi (bln)</label>
+              <label className="block mb-2 text-sm font-semibold text-gray-800">Frekuensi (bln)</label>
               <input
                 type="number"
                 name="freqRutin"
                 value={form.freqRutin}
                 onChange={handleChange}
-                className="w-full border px-2 py-1 rounded"
+                className="w-full border-2 border-gray-300 px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900"
                 min={1}
+                placeholder="Masukkan frekuensi dalam bulan"
               />
             </div>
-            <div className="text-right">
-              <button onClick={()=>setModal(null)} className="mr-2 px-3 py-1 bg-gray-300 rounded">Batal</button>
-              <button onClick={update} className="px-3 py-1 bg-blue-600 text-white rounded">Simpan</button>
+            <div className="text-right pt-4 border-t">
+              <button onClick={()=>setModal(null)} className="mr-3 px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors">Batal</button>
+              <button onClick={update} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors">Simpan</button>
             </div>
           </div>
         </Modal>
@@ -309,10 +310,10 @@ const remove = async () => {
 
       {modal === 'delete' && editing && (
         <Modal title="Konfirmasi Hapus" onClose={()=>setModal(null)}>
-          <p>Hapus jadwal tanggal <strong>{editing.tglSelanjutnya}</strong> untuk <strong>{editing.namaHewan}</strong>?</p>
-          <div className="mt-4 text-right">
-            <button onClick={()=>setModal(null)} className="mr-2 px-3 py-1 bg-gray-300 rounded">Tidak</button>
-            <button onClick={remove} className="px-3 py-1 bg-red-600 text-white rounded">Ya, Hapus</button>
+          <p className="mb-6 text-gray-700">Hapus jadwal tanggal <strong>{editing.tglSelanjutnya}</strong> untuk <strong>{editing.namaHewan}</strong>?</p>
+          <div className="text-right pt-4 border-t">
+            <button onClick={()=>setModal(null)} className="mr-3 px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors">Tidak</button>
+            <button onClick={remove} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors">Ya, Hapus</button>
           </div>
         </Modal>
       )}
@@ -322,11 +323,11 @@ const remove = async () => {
 
 function Modal(props: { title: string; onClose():void; children: React.ReactNode }) {
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold">{props.title}</h2>
-          <button onClick={props.onClose} className="text-gray-500">✕</button>
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-2xl">
+        <div className="flex justify-between items-center mb-6 pb-4 border-b">
+          <h2 className="text-xl font-bold text-gray-900">{props.title}</h2>
+          <button onClick={props.onClose} className="text-gray-500 hover:text-gray-700 text-xl font-bold">✕</button>
         </div>
         {props.children}
       </div>

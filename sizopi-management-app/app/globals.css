@@ -1,7 +1,20 @@
 @import "tailwindcss";
 @plugin "daisyui";
 
-/* ...existing code... */
+/* Ensure all inputs have visible text */
+input, select, textarea {
+  @apply text-gray-900 bg-white;
+}
+
+/* Make sure placeholder text is visible but lighter */
+input::placeholder, textarea::placeholder {
+  @apply text-gray-500;
+}
+
+/* Focus state for better visibility */
+input:focus, select:focus, textarea:focus {
+  @apply text-gray-900 bg-white;
+}
 
 .modal-overlay {
   position: fixed;
